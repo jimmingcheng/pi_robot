@@ -21,7 +21,6 @@ class Mouth:
         Map the computed RMS value to a brightness value of 0.0, 0.5, or 1.0.
         Adjust `max_volume` based on your experimental audio levels.
         """
-        print(f'RMS: {rms}')
         # Normalize the RMS value.
         normalized = rms / self.max_volume
         normalized = max(0.0, min(1.0, normalized))

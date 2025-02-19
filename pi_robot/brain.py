@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import textwrap
 
 import numpy as np
 import openai
@@ -12,15 +13,44 @@ from scipy.signal import resample
 
 from pi_robot.mouth import Mouth
 from pi_robot.ears import Ears
+from pi_robot.prefrontal_cortex import PrefrontalCortexAgent
 
 
 class Brain:
+    prefrontal_cortex: PrefrontalCortexAgent
     mouth: Mouth
+    ears: Ears
 
     def __init__(self) -> None:
+        self.prefrontal_cortex = PrefrontalCortexAgent("")
         self.mouth = Mouth(led=PWMLED(17))
+        self.ears = Ears()
+
+    def instructions(self) -> str:
+        return textwrap.dedent(
+            """\
+            You are a robot with eyes, ears, and a mouth.
+
+            Always speak English. You are lively and witty.
+            """
+        )
 
     async def reply(self, openai_conn: AsyncRealtimeConnection, audio_message: bytes) -> None:
+        human_message = self.ears.get_transcript()
+
+        if human_message:
+            print(f"\nHuman: {human_message}")
+            cortex_instruction = textwrap.dedent(
+                f"""\
+                Express the emotion that this message might evoke:
+
+                "{human_message}"
+                """
+            )
+            asyncio.create_task(
+                asyncio.to_thread(self.prefrontal_cortex.reply, cortex_instruction)
+            )
+
         OPENAI_AUDIO_SAMPLE_RATE = 24000
 
         # Resample from 44100 Hz (input) to 24000 Hz (for OpenAI)
@@ -34,8 +64,13 @@ class Brain:
             output=True
         )
 
+        openai_session = {
+            "turn_detection": {"type": "server_vad"},
+            "instructions": self.instructions(),
+        }
+
         try:
-            await openai_conn.session.update(session={"turn_detection": {"type": "server_vad"}})
+            await openai_conn.session.update(session=openai_session)  # type: ignore
             await openai_conn.input_audio_buffer.append(
                 audio=base64.b64encode(audio_message).decode("utf-8")
             )
@@ -47,9 +82,10 @@ class Brain:
                     self.mouth.speak(output_stream, base64.b64decode(event.delta))
                 if event.type == "response.done" and event.response.output:
                     for output in event.response.output:
-                        for item in (output.content or []):
-                            print(item.transcript)
-                            return
+                        if output.type == "message":
+                            if output.content:
+                                print(f"\nRobot: {output.content[0].transcript}")
+                    return
         finally:
             output_stream.stop_stream()
             output_stream.close()
@@ -69,26 +105,20 @@ class Brain:
             frames_per_buffer=CHUNK,
         )
 
-        # Create an instance of Ears to handle audio detection.
-        ears = Ears()
-
         try:
             client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
             async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
                 while True:
-                    # Read a chunk of audio data asynchronously.
-                    data = await asyncio.to_thread(
+                    audio_data = await asyncio.to_thread(
                         input_stream.read, CHUNK, exception_on_overflow=False
                     )
-                    # Let Ears process the new chunk.
-                    ears.listen(data)
 
-                    # If Ears indicates that it's time to reply...
-                    if ears.should_reply():
+                    self.ears.listen(audio_data)
+
+                    if self.ears.should_reply():
                         print("\nSound detected...")
-                        await self.reply(openai_conn, ears.get_audio())
-                        print("\nReplied!")
-                        ears.reset()
+                        await self.reply(openai_conn, self.ears.get_audio())
+                        self.ears.reset()
         except KeyboardInterrupt:
             print("\nBye!")
         finally:

@@ -1,6 +1,8 @@
+import json
 import time
 
 import numpy as np
+import vosk
 
 
 class Ears:
@@ -82,6 +84,17 @@ class Ears:
     def get_audio(self) -> bytes:
         """Return the concatenated audio data."""
         return b"".join(self.audio_frames)
+
+    def get_transcript(self) -> str:
+        """Return the transcript of the detected speech."""
+        audio_data = self.get_audio()
+
+        vosk.SetLogLevel(-1)
+        model = vosk.Model("vosk-model-small-en-us-0.15")
+        rec = vosk.KaldiRecognizer(model, 44100)
+        rec.AcceptWaveform(audio_data)
+        result = rec.FinalResult()
+        return json.loads(result)["text"]
 
     def reset(self) -> None:
         """Reset the internal state to prepare for a new utterance."""
