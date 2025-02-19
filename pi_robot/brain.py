@@ -1,38 +1,50 @@
 import asyncio
 import base64
 import os
-import time
 
 import numpy as np
 import openai
 import pyaudio
-from gpiozero import LED
+from gpiozero import PWMLED
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from pyaudio import PyAudio
 from scipy.signal import resample
 
+from pi_robot.mouth import Mouth
+from pi_robot.ears import Ears
+
 
 class Brain:
-    async def reply(self, openai_conn: AsyncRealtimeConnection, audio_data: bytes) -> None:
-        OUTPUT_RATE = 24000
+    mouth: Mouth
 
-        audio_data = self.resample_audio(audio_data, 44100, OUTPUT_RATE)
+    def __init__(self) -> None:
+        self.mouth = Mouth(led=PWMLED(17))
+
+    async def reply(self, openai_conn: AsyncRealtimeConnection, audio_message: bytes) -> None:
+        OPENAI_AUDIO_SAMPLE_RATE = 24000
+
+        # Resample from 44100 Hz (input) to 24000 Hz (for OpenAI)
+        audio_message = self.resample_audio(audio_message, 44100, OPENAI_AUDIO_SAMPLE_RATE)
 
         audio = PyAudio()
-
-        output_stream = audio.open(format=pyaudio.paInt16, channels=1, rate=OUTPUT_RATE, output=True)
+        output_stream = audio.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=OPENAI_AUDIO_SAMPLE_RATE,
+            output=True
+        )
 
         try:
             await openai_conn.session.update(session={"turn_detection": {"type": "server_vad"}})
-            await openai_conn.input_audio_buffer.append(audio=base64.b64encode(audio_data).decode("utf-8"))
+            await openai_conn.input_audio_buffer.append(
+                audio=base64.b64encode(audio_message).decode("utf-8")
+            )
             await openai_conn.input_audio_buffer.commit()
             await openai_conn.response.create()
 
             async for event in openai_conn:
                 if event.type == "response.audio.delta":
-                    output_stream.write(
-                        base64.b64decode(event.delta)
-                    )
+                    self.mouth.speak(output_stream, base64.b64decode(event.delta))
                 if event.type == "response.done" and event.response.output:
                     for output in event.response.output:
                         for item in (output.content or []):
@@ -46,12 +58,8 @@ class Brain:
     async def listen(self) -> None:
         INPUT_DEVICE_INDEX = 0
         CHUNK = 1024
-        SILENCE_THRESHOLD = 500
-        SILENCE_DURATION = 3.0
-        MIN_SPEECH_DURATION = 0.5
 
         audio = PyAudio()
-
         input_stream = audio.open(
             format=pyaudio.paInt16,
             channels=1,
@@ -61,67 +69,32 @@ class Brain:
             frames_per_buffer=CHUNK,
         )
 
-        frames = []
-        silence_start = None
-        speech_detected = False
-        start_time = None
+        # Create an instance of Ears to handle audio detection.
+        ears = Ears()
 
         try:
             client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
             async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
                 while True:
+                    # Read a chunk of audio data asynchronously.
                     data = await asyncio.to_thread(
                         input_stream.read, CHUNK, exception_on_overflow=False
                     )
-                    frames.append(data)
-                    audio_np = np.frombuffer(data, dtype=np.int16)
-                    rms = self.compute_rms(audio_np)
+                    # Let Ears process the new chunk.
+                    ears.process_chunk(data)
 
-                    if rms > SILENCE_THRESHOLD:
-                        if not speech_detected:
-                            speech_detected = True
-                            start_time = time.time()
-                        silence_start = None
-                    else:
-                        if speech_detected:
-                            if silence_start is None:
-                                silence_start = time.time()
-                            elif time.time() - silence_start >= SILENCE_DURATION:
-                                if start_time and (time.time() - start_time) >= MIN_SPEECH_DURATION:
-                                    # Silence followed by speech
-                                    print("\nSound detected...")
-                                    await self.reply(openai_conn, b"".join(frames))
-                                    print("\nReplied!")
-                                else:
-                                    # Speech detected, but not enough
-                                    print("\nSound detected, but not enough...")
-                                frames = []
-                                silence_start = None
-                                speech_detected = False
-                                start_time = None
-                        else:
-                            if silence_start is None:
-                                silence_start = time.time()
-                            elif time.time() - silence_start >= SILENCE_DURATION:
-                                # Silence without speech
-                                frames = []
-                                silence_start = None
-                                speech_detected = False
-                                start_time = None
-
+                    # If Ears indicates that it's time to reply...
+                    if ears.should_reply():
+                        print("\nSound detected...")
+                        await self.reply(openai_conn, ears.get_audio())
+                        print("\nReplied!")
+                        ears.reset()
         except KeyboardInterrupt:
             print("\nBye!")
+        finally:
             input_stream.stop_stream()
             input_stream.close()
             audio.terminate()
-
-    @staticmethod
-    def compute_rms(audio_np: np.ndarray) -> float:
-        if len(audio_np) == 0:
-            return 0
-        audio_float = audio_np.astype(np.float32)
-        rms = np.sqrt(np.mean(audio_float ** 2))
-        return 0 if np.isnan(rms) else rms
 
     @staticmethod
     def resample_audio(audio_data: bytes, orig_rate: int, target_rate: int) -> bytes:
@@ -132,8 +105,4 @@ class Brain:
 
 
 if __name__ == "__main__":
-    led = LED(17)
-    led.on()
-    asyncio.run(
-        Brain().listen()
-    )
+    asyncio.run(Brain().listen())
