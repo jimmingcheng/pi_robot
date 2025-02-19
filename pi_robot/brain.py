@@ -81,7 +81,7 @@ class Brain:
                         input_stream.read, CHUNK, exception_on_overflow=False
                     )
                     # Let Ears process the new chunk.
-                    ears.process_chunk(data)
+                    ears.listen(data)
 
                     # If Ears indicates that it's time to reply...
                     if ears.should_reply():

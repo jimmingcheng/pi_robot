@@ -26,8 +26,11 @@ class Ears:
 
     @staticmethod
     def compute_rms(audio_np: np.ndarray) -> float:
-        """Compute the root-mean-square of the audio chunk."""
-        return np.sqrt(np.mean(np.square(audio_np)))
+        if len(audio_np) == 0:
+            return 0.0
+        audio_float = audio_np.astype(np.float32)
+        rms = np.sqrt(np.mean(audio_float ** 2))
+        return 0 if np.isnan(rms) else rms
 
     def listen(self, audio_data: bytes) -> None:
         """Process an incoming audio chunk and update state."""
@@ -36,7 +39,6 @@ class Ears:
         rms = self.compute_rms(audio_np)
         current_time = time.time()
 
-        print(f"RMS: {rms}")
         if rms > self.silence_threshold:
             # Sound detected: start or continue speech.
             if not self.speech_detected:
@@ -69,12 +71,10 @@ class Ears:
                     return True
                 else:
                     # Speech was too brief; reset state.
-                    print("Speech too brief; resetting.")
                     self.reset()
         # If no speech is detected, reset once silence has persisted.
         elif not self.speech_detected and self.silence_start_time is not None:
             if (current_time - self.silence_start_time) >= self.silence_duration:
-                print("Silence too long; resetting.")
                 self.reset()
 
         return False
