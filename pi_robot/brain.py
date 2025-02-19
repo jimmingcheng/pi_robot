@@ -7,27 +7,28 @@ import numpy as np
 import openai
 import pyaudio
 from gpiozero import LED
+from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from pyaudio import PyAudio
 from scipy.signal import resample
 
 
 class Brain:
-    async def reply(self, audio_data: bytes) -> None:
+    async def reply(self, openai_conn: AsyncRealtimeConnection, audio_data: bytes) -> None:
         OUTPUT_RATE = 24000
 
         audio_data = self.resample_audio(audio_data, 44100, OUTPUT_RATE)
 
-        output_stream = PyAudio().open(format=pyaudio.paInt16, channels=1, rate=OUTPUT_RATE, output=True)
+        audio = PyAudio()
 
-        client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        output_stream = audio.open(format=pyaudio.paInt16, channels=1, rate=OUTPUT_RATE, output=True)
 
-        async with client.beta.realtime.connect(model="gpt-4o-realtime-preview") as conn:
-            await conn.session.update(session={"turn_detection": {"type": "server_vad"}})
-            await conn.input_audio_buffer.append(audio=base64.b64encode(audio_data).decode("utf-8"))
-            await conn.input_audio_buffer.commit()
-            await conn.response.create()
+        try:
+            await openai_conn.session.update(session={"turn_detection": {"type": "server_vad"}})
+            await openai_conn.input_audio_buffer.append(audio=base64.b64encode(audio_data).decode("utf-8"))
+            await openai_conn.input_audio_buffer.commit()
+            await openai_conn.response.create()
 
-            async for event in conn:
+            async for event in openai_conn:
                 if event.type == "response.audio.delta":
                     output_stream.write(
                         base64.b64decode(event.delta)
@@ -37,6 +38,10 @@ class Brain:
                         for item in (output.content or []):
                             print(item.transcript)
                             return
+        finally:
+            output_stream.stop_stream()
+            output_stream.close()
+            audio.terminate()
 
     async def listen(self) -> None:
         INPUT_DEVICE_INDEX = 0
@@ -62,42 +67,47 @@ class Brain:
         start_time = None
 
         try:
-            while True:
-                data = input_stream.read(CHUNK, exception_on_overflow=False)
-                frames.append(data)
-                audio_np = np.frombuffer(data, dtype=np.int16)
-                rms = self.compute_rms(audio_np)
+            client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+            async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
+                while True:
+                    data = await asyncio.to_thread(
+                        input_stream.read, CHUNK, exception_on_overflow=False
+                    )
+                    frames.append(data)
+                    audio_np = np.frombuffer(data, dtype=np.int16)
+                    rms = self.compute_rms(audio_np)
 
-                if rms > SILENCE_THRESHOLD:
-                    if not speech_detected:
-                        speech_detected = True
-                        start_time = time.time()
-                    silence_start = None
-                else:
-                    if speech_detected:
-                        if silence_start is None:
-                            silence_start = time.time()
-                        elif time.time() - silence_start >= SILENCE_DURATION:
-                            if start_time and (time.time() - start_time) >= MIN_SPEECH_DURATION:
-                                # Silence followed by speech
-                                print("\nSound detected...")
-                                await self.reply(b"".join(frames))
-                            else:
-                                # Speech detected, but not enough
-                                print("\nSound detected, but not enough...")
-                            frames = []
-                            silence_start = None
-                            speech_detected = False
-                            start_time = None
+                    if rms > SILENCE_THRESHOLD:
+                        if not speech_detected:
+                            speech_detected = True
+                            start_time = time.time()
+                        silence_start = None
                     else:
-                        if silence_start is None:
-                            silence_start = time.time()
-                        elif time.time() - silence_start >= SILENCE_DURATION:
-                            # Silence without speech
-                            frames = []
-                            silence_start = None
-                            speech_detected = False
-                            start_time = None
+                        if speech_detected:
+                            if silence_start is None:
+                                silence_start = time.time()
+                            elif time.time() - silence_start >= SILENCE_DURATION:
+                                if start_time and (time.time() - start_time) >= MIN_SPEECH_DURATION:
+                                    # Silence followed by speech
+                                    print("\nSound detected...")
+                                    await self.reply(openai_conn, b"".join(frames))
+                                    print("\nReplied!")
+                                else:
+                                    # Speech detected, but not enough
+                                    print("\nSound detected, but not enough...")
+                                frames = []
+                                silence_start = None
+                                speech_detected = False
+                                start_time = None
+                        else:
+                            if silence_start is None:
+                                silence_start = time.time()
+                            elif time.time() - silence_start >= SILENCE_DURATION:
+                                # Silence without speech
+                                frames = []
+                                silence_start = None
+                                speech_detected = False
+                                start_time = None
 
         except KeyboardInterrupt:
             print("\nBye!")
@@ -123,6 +133,7 @@ class Brain:
 
 if __name__ == "__main__":
     led = LED(17)
+    led.on()
     asyncio.run(
         Brain().listen()
     )
