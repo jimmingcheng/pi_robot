@@ -1,138 +1,117 @@
-import asyncio
-import base64
-import os
 import textwrap
-
-import numpy as np
-import openai
-import pyaudio
-from gpiozero import PWMLED
-from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
-from pyaudio import PyAudio
-from scipy.signal import resample
-
-from pi_robot.mouth import Mouth
-from pi_robot.ears import Ears
-from pi_robot.prefrontal_cortex import PrefrontalCortexAgent
+from scooterbot_agent.python_api_agent import PythonAPIAgent
+from scooterbot_agent.python_api_agent import generate_python_api_doc
 
 
-class Brain:
-    prefrontal_cortex: PrefrontalCortexAgent
-    mouth: Mouth
-    ears: Ears
+class PrefrontalCortex:
+    def wiggle_ears(self) -> None:
+        print('Wiggling ears')
+        return
 
-    def __init__(self) -> None:
-        self.prefrontal_cortex = PrefrontalCortexAgent("")
-        self.mouth = Mouth(led=PWMLED(17))
-        self.ears = Ears()
+    def blink_eyes(self) -> None:
+        print('Blinking eyes')
+        return
 
-    def instructions(self) -> str:
+    def express_neutral_emotion(self) -> None:
+        print('Expressing neutral emotion')
+        return
+
+
+class Brain(PythonAPIAgent):
+    def overview(self) -> str:
+        return ""
+
+    def usage_guide(self) -> str:
         return textwrap.dedent(
             """\
-            You are a robot with eyes, ears, and a mouth.
+            # API Specification
 
-            Always speak English. You are lively and witty.
+            This class provides access to the robot's physical capabilities.
+
+            ```
+            {api_doc}
+            ```
+
+            # API Usage
+
+            To use this API, build a python function with the following signature:
+
+            ```
+            def `function_name`(robot_brain):
+            ```
+
+            - function_name should describe the request to be fulfilled
+            - the function should have a single argument, `brain`, which is an instance of the `Brain` class
+            - use `brain` to execute desired robot actions
+
+            The resulting function definition should be returned as the `function_definition`
+            argument to the `invoke_api` tool.
+
+            ## Examples of `function_definition` arguments to the `invoke_api` tool calls
+
+            ```
+            def laugh(brain):
+                brain.wiggle_ears()
+                brain.blink_eyes()
+            ```
+
+            ```
+            def wiggle_ears(brain):
+                brain.wiggle_ears()
+            ```
+
+            ```
+            def blink_eyes(brain):
+                brain.blink_eyes()
+            ```
             """
+        ).format(
+            api_doc=generate_python_api_doc(PrefrontalCortex)
         )
 
-    async def reply(self, openai_conn: AsyncRealtimeConnection, audio_message: bytes) -> None:
-        human_message = self.ears.get_transcript()
-
-        if human_message:
-            print(f"\nHuman: {human_message}")
-            cortex_instruction = textwrap.dedent(
-                f"""\
-                Express the emotion that this message might evoke:
-
-                "{human_message}"
-                """
-            )
-            asyncio.create_task(
-                asyncio.to_thread(self.prefrontal_cortex.reply, cortex_instruction)
-            )
-
-        OPENAI_AUDIO_SAMPLE_RATE = 24000
-
-        # Resample from 44100 Hz (input) to 24000 Hz (for OpenAI)
-        audio_message = self.resample_audio(audio_message, 44100, OPENAI_AUDIO_SAMPLE_RATE)
-
-        audio = PyAudio()
-        output_stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=OPENAI_AUDIO_SAMPLE_RATE,
-            output=True
-        )
-
-        openai_session = {
-            "turn_detection": {"type": "server_vad"},
-            "instructions": self.instructions(),
+    def tool_spec_for_invoke_api(self) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "invoke_api",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "function_definition": {"type": "string"},
+                    },
+                    "required": ["function_definition"],
+                }
+            }
         }
 
-        try:
-            await openai_conn.session.update(session=openai_session)  # type: ignore
-            await openai_conn.input_audio_buffer.append(
-                audio=base64.b64encode(audio_message).decode("utf-8")
-            )
-            await openai_conn.input_audio_buffer.commit()
-            await openai_conn.response.create()
+    def invoke_api(self, **args) -> str:
+        function_definition = args['function_definition']
 
-            async for event in openai_conn:
-                if event.type == "response.audio.delta":
-                    self.mouth.speak(output_stream, base64.b64decode(event.delta))
-                if event.type == "response.done" and event.response.output:
-                    for output in event.response.output:
-                        if output.type == "message":
-                            if output.content:
-                                print(f"\nRobot: {output.content[0].transcript}")
-                    return
-        finally:
-            output_stream.stop_stream()
-            output_stream.close()
-            audio.terminate()
+        robot_brain = PrefrontalCortex()
 
-    async def listen(self) -> None:
-        INPUT_DEVICE_INDEX = 0
-        CHUNK = 1024
+        func_name = function_definition.split('(')[0].split('def ')[1]
 
-        audio = PyAudio()
-        input_stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=44100,
-            input=True,
-            input_device_index=INPUT_DEVICE_INDEX,
-            frames_per_buffer=CHUNK,
+        invocation_func = textwrap.dedent(
+            """\
+            {function_definition}
+
+            retval = {func_name}(robot_brain)
+            """
+        ).format(
+            function_definition=function_definition,
+            func_name=func_name,
         )
 
-        try:
-            client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-            async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
-                while True:
-                    audio_data = await asyncio.to_thread(
-                        input_stream.read, CHUNK, exception_on_overflow=False
-                    )
+        invocation_func_locals = {'robot_brain': robot_brain}
 
-                    self.ears.listen(audio_data)
+        # Securely execute the dynamic code
+        exec(invocation_func, {'__builtins__': None}, invocation_func_locals)
 
-                    if self.ears.should_reply():
-                        print("\nSound detected...")
-                        await self.reply(openai_conn, self.ears.get_audio())
-                        self.ears.reset()
-        except KeyboardInterrupt:
-            print("\nBye!")
-        finally:
-            input_stream.stop_stream()
-            input_stream.close()
-            audio.terminate()
+        retval = invocation_func_locals['retval']
 
-    @staticmethod
-    def resample_audio(audio_data: bytes, orig_rate: int, target_rate: int) -> bytes:
-        audio_np = np.frombuffer(audio_data, dtype=np.int16)
-        new_length = int(len(audio_np) * target_rate / orig_rate)
-        resampled_audio = resample(audio_np, new_length)
-        return resampled_audio.astype(np.int16).tobytes()
+        print('---- GENERATING CODE ----')
+        print(invocation_func)
+        print('---- EXECUTING CODE ----')
+        print(f'{func_name}(robot_brain) -> {retval}')
 
-
-if __name__ == "__main__":
-    asyncio.run(Brain().listen())
+        return f'{func_name}(robot_brain) -> {retval}'
