@@ -1,38 +1,84 @@
 import asyncio
 import base64
 import os
+import sys
 import textwrap
 
+import logging
 import numpy as np
 import openai
 import pyaudio
-from gpiozero import PWMLED
+import yaml
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from pyaudio import PyAudio
 from scipy.signal import resample
 
 from pi_robot.brain import Brain
+from pi_robot.logging import logger
 from pi_robot.mouth import Mouth
 from pi_robot.ears import Ears
 from pi_robot.eyebrows import Eyebrows
+from pi_robot.eyes import Eyes
 
 
 class Robot:
     brain: Brain
     mouth: Mouth
     ears: Ears
-    eyebrows: Eyebrows
 
-    def __init__(self) -> None:
-        self.brain = Brain("")
-        self.mouth = Mouth(led=PWMLED(17))
-        self.ears = Ears()
-        self.eyebrows = Eyebrows()
+    def __init__(self, config_file_path: str = "config.yaml") -> None:
+        self.configure(config_file_path)
+
+    def configure(self, config_file_path: str) -> None:
+        try:
+            with open(config_file_path) as config_file:
+                config = yaml.safe_load(config_file)
+        except FileNotFoundError:
+            logger.error(textwrap.dedent(
+                f"""\
+                Configuration file not found at {config_file_path}.
+
+                To create one, copy `./sample_config.yaml` and modify it as needed.
+                """
+            ))
+            exit(1)
+
+        try:
+            os.environ["OPENAI_API_KEY"] = config["openai_api_key"]
+
+            gpio_pins = config["gpio_pin_assignments"]
+
+            self.mouth = Mouth(gpio=gpio_pins.get("mouth"))
+
+            self.ears = Ears(
+                left_gpio=gpio_pins.get("ears", {}).get("left"),
+                right_gpio=gpio_pins.get("ears", {}).get("right")
+            )
+
+            eyes = Eyes(
+                left_gpio=gpio_pins.get("eyes", {}).get("left"),
+                right_gpio=gpio_pins.get("eyes", {}).get("right")
+            )
+            eyebrows = Eyebrows(
+                left_gpio=gpio_pins.get("eyebrows", {}).get("left"),
+                right_gpio=gpio_pins.get("eyebrows", {}).get("right")
+            )
+
+            self.brain = Brain(
+                mouth=self.mouth,
+                ears=self.ears,
+                eyes=eyes,
+                eyebrows=eyebrows,
+            )
+        except KeyError as e:
+            logger.error(f"Key `{e}` not found in configuration file.")
+            exit(1)
 
     def instructions(self) -> str:
         return textwrap.dedent(
             """\
-            You are a robot with eyes, ears, and a mouth.
+            You are a robot with a humanoid body. You are physicially capable of wiggling your ears,
+            blinking your eyes, and moving your eyebrows.
 
             Always speak English. You are lively and witty.
             """
@@ -42,12 +88,16 @@ class Robot:
         human_message = self.ears.get_speech_transcript()
 
         if human_message:
-            print(f"\nHuman: {human_message}")
+            logger.info(f"\nHuman: {human_message}")
             cortex_instruction = textwrap.dedent(
                 f"""\
-                Express the emotion that this message might evoke:
+                The user said: "{human_message}"
 
-                "{human_message}"
+                This is a shitty transcription, so do your best to figure out what they said.
+
+                If the message is a command, do your best to follow it.
+
+                Otherwise, make the facial expression that the message might evoke.
                 """
             )
             asyncio.create_task(
@@ -87,7 +137,7 @@ class Robot:
                     for output in event.response.output:
                         if output.type == "message":
                             if output.content:
-                                print(f"\nRobot: {output.content[0].transcript}")
+                                logger.info(f"\nRobot: {output.content[0].transcript}")
                     return
         finally:
             output_stream.stop_stream()
@@ -98,13 +148,13 @@ class Robot:
         async with Ears() as activated_ears:
             self.ears = activated_ears
 
-            client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+            client = openai.AsyncOpenAI()
             async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
                 while True:
                     await self.ears.listen()
 
                     if self.ears.heard_end_of_speech():
-                        print("\nRobot: <I heard you>")
+                        logger.info("\nRobot: <I heard you>")
                         await self.reply(openai_conn, self.ears.get_speech_audio())
                         self.ears.speech_detection_state.reset()
 
@@ -117,4 +167,12 @@ class Robot:
 
 
 if __name__ == "__main__":
+    # if -v then set logging level to DEBUG
+    if "-v" in sys.argv:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
+    logger.info("Starting robot...")
+
     asyncio.run(Robot().run())

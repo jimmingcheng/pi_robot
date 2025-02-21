@@ -2,34 +2,48 @@ import textwrap
 from scooterbot_agent.python_api_agent import PythonAPIAgent
 from scooterbot_agent.python_api_agent import generate_python_api_doc
 
-
-class PrefrontalCortex:
-    def wiggle_ears(self) -> None:
-        print('Wiggling ears')
-        return
-
-    def blink_eyes(self) -> None:
-        print('Blinking eyes')
-        return
-
-    def express_neutral_emotion(self) -> None:
-        print('Expressing neutral emotion')
-        return
+from pi_robot.logging import logger
+from pi_robot.mouth import Mouth
+from pi_robot.ears import Ears
+from pi_robot.eyebrows import Eyebrows
+from pi_robot.eyes import Eyes
 
 
 class Brain(PythonAPIAgent):
+    def __init__(
+        self,
+        mouth: Mouth,
+        ears: Ears,
+        eyes: Eyes,
+        eyebrows: Eyebrows | None = None,
+    ) -> None:
+        super().__init__("null_user_id")
+
+        self.mouth = mouth
+        self.ears = ears
+        self.eyes = eyes
+        self.eyebrows = eyebrows
+
     def overview(self) -> str:
         return ""
 
     def usage_guide(self) -> str:
+        ears_api = generate_python_api_doc(Ears, whitelisted_members=["wiggle"])
+        eyes_api = generate_python_api_doc(Eyes, whitelisted_members=["blink"])
+        eyebrows_api = generate_python_api_doc(Eyebrows, whitelisted_members=["wiggle"])
+
         return textwrap.dedent(
-            """\
+            f"""\
             # API Specification
 
             This class provides access to the robot's physical capabilities.
 
             ```
-            {api_doc}
+            {ears_api}
+
+            {eyes_api}
+
+            {eyebrows_api}
             ```
 
             # API Usage
@@ -41,8 +55,8 @@ class Brain(PythonAPIAgent):
             ```
 
             - function_name should describe the request to be fulfilled
-            - the function should have a single argument, `brain`, which is an instance of the `Brain` class
-            - use `brain` to execute desired robot actions
+            - the function should have arguments `ears`, `eyes`, and `eyebrows` which are instances
+              of the `Ears`, `Eyes`, and `Eyebrows` classes respectively
 
             The resulting function definition should be returned as the `function_definition`
             argument to the `invoke_api` tool.
@@ -50,23 +64,21 @@ class Brain(PythonAPIAgent):
             ## Examples of `function_definition` arguments to the `invoke_api` tool calls
 
             ```
-            def laugh(brain):
-                brain.wiggle_ears()
-                brain.blink_eyes()
+            def laugh(ears, eyes, eyebrows):
+                eyes.blink()
+                eyebrows.wiggle()
             ```
 
             ```
-            def wiggle_ears(brain):
-                brain.wiggle_ears()
+            def wiggle_ears(ears, eyes, eyebrows):
+                ears.wiggle()
             ```
 
             ```
-            def blink_eyes(brain):
-                brain.blink_eyes()
+            def blink_eyes(ears, eyes, eyebrows):
+                eyes.blink()
             ```
             """
-        ).format(
-            api_doc=generate_python_api_doc(PrefrontalCortex)
         )
 
     def tool_spec_for_invoke_api(self) -> dict:
@@ -87,31 +99,36 @@ class Brain(PythonAPIAgent):
     def invoke_api(self, **args) -> str:
         function_definition = args['function_definition']
 
-        robot_brain = PrefrontalCortex()
-
         func_name = function_definition.split('(')[0].split('def ')[1]
 
         invocation_func = textwrap.dedent(
             """\
             {function_definition}
 
-            retval = {func_name}(robot_brain)
+            retval = {func_name}(ears, eyes, eyebrows)
             """
         ).format(
             function_definition=function_definition,
             func_name=func_name,
         )
 
-        invocation_func_locals = {'robot_brain': robot_brain}
+        invocation_func_locals = {
+            'ears': self.ears,
+            'eyes': self.eyes,
+            'eyebrows': self.eyebrows,
+        }
 
         # Securely execute the dynamic code
         exec(invocation_func, {'__builtins__': None}, invocation_func_locals)
 
         retval = invocation_func_locals['retval']
 
-        print('---- GENERATING CODE ----')
-        print(invocation_func)
-        print('---- EXECUTING CODE ----')
-        print(f'{func_name}(robot_brain) -> {retval}')
+        logger.debug('---- GENERATING CODE ----')
+        logger.debug(invocation_func)
+        logger.debug('---- EXECUTING CODE ----')
+        logger.debug(f'{func_name}(robot_brain) -> {retval}')
 
         return f'{func_name}(robot_brain) -> {retval}'
+
+    def reply(self, message: str) -> str:
+        return self.answer_with_api(message, max_depth=1)

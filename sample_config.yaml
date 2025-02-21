@@ -1,0 +1,9 @@
+openai_api_key: <YOUR OPENAI API KEY>
+gpio_pin_assignments:
+  mouth: 2
+  eyebrows:
+    left: 3
+    right: 4
+  ears:
+    left: 5
+    right: 6

@@ -7,6 +7,8 @@ import numpy as np
 import pyaudio
 import vosk
 
+from pi_robot.logging import logger
+
 
 @dataclass
 class SpeechDetectionState:
@@ -35,6 +37,8 @@ class Ears:
 
     def __init__(
         self,
+        left_gpio: int | None = None,
+        right_gpio: int | None = None,
         silence_threshold: int = 500,
         silence_duration: float = 2.0,
         min_speech_duration: float = 0.5,
@@ -170,3 +174,7 @@ class Ears:
         rec.AcceptWaveform(audio_data)
         result = rec.FinalResult()
         return json.loads(result)["text"]
+
+    def wiggle(self) -> None:
+        logger.info("👂")
+        return
