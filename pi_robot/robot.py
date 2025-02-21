@@ -39,7 +39,7 @@ class Robot:
         )
 
     async def reply(self, openai_conn: AsyncRealtimeConnection, audio_message: bytes) -> None:
-        human_message = self.ears.get_transcript()
+        human_message = self.ears.get_speech_transcript()
 
         if human_message:
             print(f"\nHuman: {human_message}")
@@ -94,40 +94,19 @@ class Robot:
             output_stream.close()
             audio.terminate()
 
-    async def listen(self) -> None:
-        INPUT_DEVICE_INDEX = 0
-        CHUNK = 1024
+    async def run(self) -> None:
+        async with Ears() as activated_ears:
+            self.ears = activated_ears
 
-        audio = PyAudio()
-        input_stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=44100,
-            input=True,
-            input_device_index=INPUT_DEVICE_INDEX,
-            frames_per_buffer=CHUNK,
-        )
-
-        try:
             client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
             async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
                 while True:
-                    audio_data = await asyncio.to_thread(
-                        input_stream.read, CHUNK, exception_on_overflow=False
-                    )
+                    await self.ears.listen()
 
-                    self.ears.listen(audio_data)
-
-                    if self.ears.should_reply():
-                        print("\nSound detected...")
-                        await self.reply(openai_conn, self.ears.get_audio())
-                        self.ears.reset()
-        except KeyboardInterrupt:
-            print("\nBye!")
-        finally:
-            input_stream.stop_stream()
-            input_stream.close()
-            audio.terminate()
+                    if self.ears.heard_end_of_speech():
+                        print("\nRobot: <I heard you>")
+                        await self.reply(openai_conn, self.ears.get_speech_audio())
+                        self.ears.speech_detection_state.reset()
 
     @staticmethod
     def resample_audio(audio_data: bytes, orig_rate: int, target_rate: int) -> bytes:
@@ -138,4 +117,4 @@ class Robot:
 
 
 if __name__ == "__main__":
-    asyncio.run(Robot().listen())
+    asyncio.run(Robot().run())
