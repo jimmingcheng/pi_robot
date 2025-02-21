@@ -1,6 +1,6 @@
-# Setting Up and Running `pi_robot` on a Raspberry Pi
+# pi_robot
 
-This guide walks through the steps to set up and start the `pi_robot` application on a Raspberry Pi.
+`pi_robot` is a simple Python application that uses the Raspberry Pi to control a physical robot using OpenAI's realtime API. The robot has basic body parts like a mouth, ears, eyes, eyebrows, etc. that can be linked to simple physical hardware like LEDs and servo motors via the Pi's GPIO pins.
 
 ## Prerequisites
 
