@@ -2,6 +2,7 @@ import time
 from gpiozero import PWMLED
 
 from pi_robot.logging import logger
+from pi_robot.movement import Speed
 
 
 class Eyes:
@@ -18,20 +19,24 @@ class Eyes:
         if right_gpio:
             self.right_led = PWMLED(right_gpio)
 
-    def blink(self, repeat_n: int = 3) -> None:
+    def blink(self, repeat_n: int = 3, speed: Speed = Speed.FAST) -> None:
         logger.info("👀️")
 
+        if not self.left_led or not self.right_led:
+            return
+
+        steps = 100
+        duration = 0.2 if speed == Speed.FAST else 0.5
+
         for _ in range(repeat_n):
-            if self.left_led:
-                self.left_led.value = 1.0
-            if self.right_led:
-                self.right_led.value = 1.0
+            for value in [x * (1 / steps) for x in range(steps + 1)]:
+                self.left_led.value = value
+                self.right_led.value = value
 
-            time.sleep(0.1)
+                time.sleep(duration / steps / 2.0)
 
-            if self.left_led:
-                self.left_led.value = 0.0
-            if self.right_led:
-                self.right_led.value = 0.0
+            for value in [x * (1 / steps) for x in range(steps, -1, -1)]:
+                self.left_led.value = value
+                self.right_led.value = value
 
-            time.sleep(0.1)
+                time.sleep(duration / steps / 2.0)

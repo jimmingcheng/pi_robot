@@ -4,6 +4,7 @@ from scooterbot_agent.python_api_agent import generate_python_api_doc
 
 from pi_robot.logging import logger
 from pi_robot.mouth import Mouth
+from pi_robot.movement import Speed
 from pi_robot.ears import Ears
 from pi_robot.eyebrows import Eyebrows
 from pi_robot.eyes import Eyes
@@ -28,17 +29,15 @@ class Brain(PythonAPIAgent):
         return ""
 
     def usage_guide(self) -> str:
-        ears_api = generate_python_api_doc(Ears, whitelisted_members=["wiggle"])
-        eyes_api = generate_python_api_doc(Eyes, whitelisted_members=["blink"])
-        eyebrows_api = generate_python_api_doc(Eyebrows, whitelisted_members=["wiggle"])
-
         return textwrap.dedent(
-            f"""\
+            """\
             # API Specification
 
             This class provides access to the robot's physical capabilities.
 
             ```
+            {speed_api}
+
             {ears_api}
 
             {eyes_api}
@@ -65,8 +64,13 @@ class Brain(PythonAPIAgent):
 
             ```
             def laugh(ears, eyes, eyebrows):
-                eyes.blink()
+                eyes.blink(speed=Speed.FAST)
                 eyebrows.wiggle()
+            ```
+
+            ```
+            def show_empathy(ears, eyes, eyebrows):
+                eyes.blink(speed=Speed.SLOW)
             ```
 
             ```
@@ -79,6 +83,11 @@ class Brain(PythonAPIAgent):
                 eyes.blink()
             ```
             """
+        ).format(
+            speed_api=generate_python_api_doc(Speed, whitelisted_members=["FAST", "SLOW"]),
+            ears_api=generate_python_api_doc(Ears, whitelisted_members=["wiggle"]),
+            eyes_api=generate_python_api_doc(Eyes, whitelisted_members=["blink"]),
+            eyebrows_api=generate_python_api_doc(Eyebrows, whitelisted_members=["wiggle"]),
         )
 
     def tool_spec_for_invoke_api(self) -> dict:
@@ -97,6 +106,7 @@ class Brain(PythonAPIAgent):
         }
 
     def invoke_api(self, **args) -> str:
+        print(self.usage_guide())
         function_definition = args['function_definition']
 
         func_name = function_definition.split('(')[0].split('def ')[1]
@@ -112,19 +122,25 @@ class Brain(PythonAPIAgent):
             func_name=func_name,
         )
 
+        logger.debug('---- GENERATING CODE ----')
+        logger.debug(invocation_func)
+
+        invocation_func_globals = {
+            '__builtins__': None,
+            'Speed': Speed,
+        }
         invocation_func_locals = {
             'ears': self.ears,
             'eyes': self.eyes,
             'eyebrows': self.eyebrows,
+            'Speed': Speed,
         }
 
         # Securely execute the dynamic code
-        exec(invocation_func, {'__builtins__': None}, invocation_func_locals)
+        exec(invocation_func, invocation_func_globals, invocation_func_locals)
 
         retval = invocation_func_locals['retval']
 
-        logger.debug('---- GENERATING CODE ----')
-        logger.debug(invocation_func)
         logger.debug('---- EXECUTING CODE ----')
         logger.debug(f'{func_name}(robot_brain) -> {retval}')
 

@@ -2,6 +2,7 @@ import time
 from gpiozero import AngularServo
 
 from pi_robot.logging import logger
+from pi_robot.movement import Speed
 
 
 class Eyebrows:
@@ -30,20 +31,24 @@ class Eyebrows:
                 max_pulse_width=0.002,
             )
 
-    def wiggle(self, repeat_n: int = 3) -> None:
+    def wiggle(self, repeat_n: int = 3, speed: Speed = Speed.FAST) -> None:
         logger.info("🤨")
 
+        if not self.left_servo or not self.right_servo:
+            return
+
+        steps = 100
+        duration = 0.2 if speed == Speed.FAST else 0.5
+
         for _ in range(repeat_n):
-            if self.left_servo:
-                self.left_servo.angle = 0
-            if self.right_servo:
-                self.right_servo.angle = 0
+            for angle in [x * (45 / steps) for x in range(steps + 1)]:
+                self.left_servo.angle = angle
+                self.right_servo.angle = angle
 
-            time.sleep(0.1)
+                time.sleep(duration / steps / 2.0)
 
-            if self.left_servo:
-                self.left_servo.angle = 45
-            if self.right_servo:
-                self.right_servo.angle = 45
+            for angle in [x * (45 / steps) for x in range(steps, -1, -1)]:
+                self.left_servo.angle = angle
+                self.right_servo.angle = angle
 
-            time.sleep(0.1)
+                time.sleep(duration / steps / 2.0)

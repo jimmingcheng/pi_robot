@@ -22,6 +22,7 @@ from pi_robot.eyes import Eyes
 
 
 class Robot:
+    name: str
     brain: Brain
     mouth: Mouth
     ears: Ears
@@ -45,6 +46,8 @@ class Robot:
 
         try:
             os.environ["OPENAI_API_KEY"] = config["openai_api_key"]
+
+            self.name = config["name"]
 
             gpio_pins = config["gpio_pin_assignments"]
 
@@ -76,7 +79,9 @@ class Robot:
 
     def instructions(self) -> str:
         return textwrap.dedent(
-            """\
+            f"""\
+            Your name is {self.name}.
+
             You are a robot with a humanoid body. You are physicially capable of wiggling your ears,
             blinking your eyes, and moving your eyebrows.
 
