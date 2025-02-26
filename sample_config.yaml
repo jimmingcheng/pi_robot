@@ -1,3 +1,4 @@
+name: <YOUR ROBOT'S NAME>
 openai_api_key: <YOUR OPENAI API KEY>
 gpio_pin_assignments:
   mouth: 2
