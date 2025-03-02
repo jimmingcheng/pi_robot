@@ -1,6 +1,7 @@
 import numpy as np
 from gpiozero import PWMLED
 from pyaudio import PyAudio
+from time import sleep
 
 from pi_robot.ears import Ears
 
@@ -60,4 +61,10 @@ class Mouth:
         output_stream.write(audio_data)  # type: ignore
 
         if self.led:
-            self.led.value = 0
+            self.led.value = 0.0
+
+    def light_up(self) -> None:
+        if self.led:
+            self.led.value = 1.0
+            sleep(1.0)
+            self.led.value = 0.0

@@ -1,38 +1,28 @@
 import time
-from gpiozero import AngularServo
+from adafruit_servokit import ServoKit
 
 from pi_robot.logging import logger
 from pi_robot.movement import Speed
 
 
 class Eyebrows:
-    left_servo: AngularServo | None = None
-    right_servo: AngularServo | None = None
+    left_servo: ServoKit | None = None
+    right_servo: ServoKit | None = None
 
     def __init__(
         self,
-        left_gpio: int | None = None,
-        right_gpio: int | None = None,
+        left_channel: int | None = None,
+        right_channel: int | None = None,
+        servokit: ServoKit | None = None,
     ) -> None:
-        if left_gpio:
-            self.left_servo = AngularServo(
-                left_gpio,
-                min_angle=0,
-                max_angle=180,
-                min_pulse_width=0.001,
-                max_pulse_width=0.002,
-            )
-        if right_gpio:
-            self.right_servo = AngularServo(
-                right_gpio,
-                min_angle=0,
-                max_angle=180,
-                min_pulse_width=0.001,
-                max_pulse_width=0.002,
-            )
+        if not servokit:
+            servokit = ServoKit(channels=16)
 
-    def wiggle(self, repeat_n: int = 3, speed: Speed = Speed.FAST) -> None:
-        logger.info("🤨")
+        self.left_servo = servokit.servo[left_channel] if left_channel is not None else None
+        self.right_servo = servokit.servo[right_channel] if right_channel is not None else None
+
+    def wiggle(self, repeat_n: int = 4, speed: Speed = Speed.FAST) -> None:
+        logger.info("🤨" * repeat_n)
 
         if not self.left_servo or not self.right_servo:
             return

@@ -1,9 +1,15 @@
+name: Furby
 openai_api_key: <YOUR OPENAI API KEY>
-gpio_pin_assignments:
-  mouth: 2
+connections:
+  mouth: 22
   eyebrows:
-    left: 3
-    right: 4
-  ears:
-    left: 5
-    right: 6
+    left: 0
+    right: 1
+  eyes:
+    left: 17
+    right: 27
+  controller:
+    x: 13
+    y: 19
+    a: 21
+    b: 26

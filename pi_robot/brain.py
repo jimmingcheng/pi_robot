@@ -11,6 +11,11 @@ from pi_robot.eyes import Eyes
 
 
 class Brain(PythonAPIAgent):
+    mouth: Mouth
+    ears: Ears
+    eyes: Eyes
+    eyebrows: Eyebrows | None
+
     def __init__(
         self,
         mouth: Mouth,
@@ -106,7 +111,6 @@ class Brain(PythonAPIAgent):
         }
 
     def invoke_api(self, **args) -> str:
-        print(self.usage_guide())
         function_definition = args['function_definition']
 
         func_name = function_definition.split('(')[0].split('def ')[1]

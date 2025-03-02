@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 import sys
 import textwrap
@@ -9,11 +10,13 @@ import numpy as np
 import openai
 import pyaudio
 import yaml
+from adafruit_servokit import ServoKit
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from pyaudio import PyAudio
 from scipy.signal import resample
 
 from pi_robot.brain import Brain
+from pi_robot.controller import Controller
 from pi_robot.logging import logger
 from pi_robot.mouth import Mouth
 from pi_robot.ears import Ears
@@ -26,8 +29,12 @@ class Robot:
     brain: Brain
     mouth: Mouth
     ears: Ears
+    eyes: Eyes
+    eyebrows: Eyebrows
+    servokit: ServoKit
 
     def __init__(self, config_file_path: str = "config.yaml") -> None:
+        self.servokit = ServoKit(channels=16)
         self.configure(config_file_path)
 
     def configure(self, config_file_path: str) -> None:
@@ -49,50 +56,72 @@ class Robot:
 
             self.name = config["name"]
 
-            gpio_pins = config["gpio_pin_assignments"]
+            connections = config["connections"]
 
-            self.mouth = Mouth(gpio=gpio_pins.get("mouth"))
+            self.mouth = Mouth(gpio=connections.get("mouth"))
 
             self.ears = Ears(
-                left_gpio=gpio_pins.get("ears", {}).get("left"),
-                right_gpio=gpio_pins.get("ears", {}).get("right")
+                left_gpio=connections.get("ears", {}).get("left"),
+                right_gpio=connections.get("ears", {}).get("right")
             )
 
-            eyes = Eyes(
-                left_gpio=gpio_pins.get("eyes", {}).get("left"),
-                right_gpio=gpio_pins.get("eyes", {}).get("right")
+            self.eyes = Eyes(
+                left_gpio=connections.get("eyes", {}).get("left"),
+                right_gpio=connections.get("eyes", {}).get("right")
             )
-            eyebrows = Eyebrows(
-                left_gpio=gpio_pins.get("eyebrows", {}).get("left"),
-                right_gpio=gpio_pins.get("eyebrows", {}).get("right")
+            self.eyebrows = Eyebrows(
+                servokit=self.servokit,
+                left_channel=connections.get("eyebrows", {}).get("left"),
+                right_channel=connections.get("eyebrows", {}).get("right")
             )
 
             self.brain = Brain(
                 mouth=self.mouth,
                 ears=self.ears,
-                eyes=eyes,
-                eyebrows=eyebrows,
+                eyes=self.eyes,
+                eyebrows=self.eyebrows,
             )
+
+            self.controller = Controller(
+                ears=self.ears,
+                eyes=self.eyes,
+                eyebrows=self.eyebrows,
+                button_x_gpio=connections.get("controller", {}).get("button_x"),
+                button_y_gpio=connections.get("controller", {}).get("button_y"),
+                button_a_gpio=connections.get("controller", {}).get("button_a"),
+                button_b_gpio=connections.get("controller", {}).get("button_b"),
+            )
+
         except KeyError as e:
             logger.error(f"Key `{e}` not found in configuration file.")
             exit(1)
 
     def instructions(self) -> str:
         return textwrap.dedent(
-            f"""\
-            Your name is {self.name}.
+            """\
+            Your name is {name}.
 
-            You are a robot with a humanoid body. You are physicially capable of wiggling your ears,
-            blinking your eyes, and moving your eyebrows.
+            You are a cute little robot with eyes that can blink, eyebrows that can move, and ears that can wiggle.
+
+            You can also hold a conversation, tell jokes, and answer questions.
 
             Always speak English. You are lively and witty.
+
+            - if asked to move your face or body, just do it without excessive verbal confirmation
+            - by default wiggle eyebrows or blink eyes at least 4 times
+            - if the conversation is funny, laugh and move your face in a way that shows you're laughing
+
+            {brain_usage_guide}
             """
+        ).format(
+            name=self.name,
+            brain_usage_guide=self.brain.usage_guide(),
         )
 
     async def reply(self, openai_conn: AsyncRealtimeConnection, audio_message: bytes) -> None:
         human_message = self.ears.get_speech_transcript()
 
-        if human_message:
+        if False and human_message:
             logger.info(f"\nHuman: {human_message}")
             cortex_instruction = textwrap.dedent(
                 f"""\
@@ -125,6 +154,21 @@ class Robot:
         openai_session = {
             "turn_detection": {"type": "server_vad"},
             "instructions": self.instructions(),
+            "voice": "sage",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "invoke_api_to_move_your_face",
+                    "description": "Invoke API functions to move your face.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "function_definition": {"type": "string"},
+                        },
+                        "required": ["function_definition"],
+                    }
+                }
+            ],
         }
 
         try:
@@ -143,17 +187,27 @@ class Robot:
                         if output.type == "message":
                             if output.content:
                                 logger.info(f"\nRobot: {output.content[0].transcript}")
-                    return
+                                return
+                        elif output.type == "function_call":
+                            func_args = json.loads(output.arguments)  # type: ignore
+                            logger.debug(func_args)
+                            if "function_definition" in func_args:
+                                asyncio.create_task(
+                                    asyncio.to_thread(
+                                        self.brain.invoke_api,
+                                        function_definition=func_args["function_definition"]
+                                    )
+                                )
         finally:
             output_stream.stop_stream()
             output_stream.close()
             audio.terminate()
 
-    async def run(self) -> None:
+    async def listen(self) -> None:
+        client = openai.AsyncOpenAI()
         async with Ears() as activated_ears:
             self.ears = activated_ears
 
-            client = openai.AsyncOpenAI()
             async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
                 while True:
                     await self.ears.listen()
@@ -162,6 +216,14 @@ class Robot:
                         logger.info("\nRobot: <I heard you>")
                         await self.reply(openai_conn, self.ears.get_speech_audio())
                         self.ears.speech_detection_state.reset()
+                        return
+
+    async def run(self) -> None:
+        logger.info("Starting robot...")
+        await asyncio.gather(
+            self.listen(),
+            asyncio.Event().wait()
+        )
 
     @staticmethod
     def resample_audio(audio_data: bytes, orig_rate: int, target_rate: int) -> bytes:
@@ -178,6 +240,7 @@ if __name__ == "__main__":
     else:
         logger.setLevel(logging.INFO)
 
-    logger.info("Starting robot...")
+    logger.info("Initializing robot...")
+    robot = Robot()
 
-    asyncio.run(Robot().run())
+    asyncio.run(robot.run())

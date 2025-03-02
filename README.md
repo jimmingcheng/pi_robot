@@ -64,6 +64,16 @@ Start the `pi_robot` application using the Python virtual environment:
 venv/bin/python -m pi_robot.robot
 ```
 
+## PCA9685 Servo Motor Driver Setup
+
+### 1. Enable I2C Interface
+
+```sh
+sudo raspi-config
+```
+
+Navigate to `Interfacing Options` -> `I2C` and enable the I2C interface.
+
 ## Notes
 
 - Ensure that SSH is enabled on the Raspberry Pi if you want to access it remotely.

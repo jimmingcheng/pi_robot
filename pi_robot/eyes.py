@@ -19,8 +19,8 @@ class Eyes:
         if right_gpio:
             self.right_led = PWMLED(right_gpio)
 
-    def blink(self, repeat_n: int = 3, speed: Speed = Speed.FAST) -> None:
-        logger.info("👀️")
+    def blink(self, repeat_n: int = 4, speed: Speed = Speed.FAST) -> None:
+        logger.info("👀️" * repeat_n)
 
         if not self.left_led or not self.right_led:
             return
