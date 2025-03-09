@@ -66,6 +66,7 @@ class Ears:
             speech_detected=False,
         )
 
+        # Start in neutral position
         if self.left_servo:
             self.left_servo.angle = 90
         if self.right_servo:

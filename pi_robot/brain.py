@@ -92,7 +92,10 @@ class Brain(PythonAPIAgent):
             speed_api=generate_python_api_doc(Speed, whitelisted_members=["FAST", "SLOW"]),
             ears_api=generate_python_api_doc(Ears, whitelisted_members=["wiggle", "perk_up"]),
             eyes_api=generate_python_api_doc(Eyes, whitelisted_members=["blink"]),
-            eyebrows_api=generate_python_api_doc(Eyebrows, whitelisted_members=["wiggle"]),
+            eyebrows_api=generate_python_api_doc(
+                Eyebrows,
+                whitelisted_members=["wiggle", "angry_furrow", "happy_raise"]
+            ),
         )
 
     def tool_spec_for_invoke_api(self) -> dict:

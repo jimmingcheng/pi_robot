@@ -58,6 +58,6 @@ class Controller:
         elif button == self.button_y:
             self.robot.eyes.blink()
         elif button == self.button_a:
-            self.robot.eyebrows.wiggle()
+            self.robot.eyebrows.happy_raise()
         elif button == self.button_b:
-            self.robot.ears.wiggle()
+            self.robot.eyebrows.angry_furrow()
