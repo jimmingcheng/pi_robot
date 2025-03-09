@@ -1,5 +1,5 @@
-name: Furby
-openai_api_key: <YOUR OPENAI API KEY>
+name: Brooklyn
+openai_api_key: <OPENAI_API_KEY>
 connections:
   mouth: 22
   eyebrows:
@@ -8,8 +8,11 @@ connections:
   eyes:
     left: 17
     right: 27
+  ears:
+    left: 2
+    right: 3
   controller:
-    x: 13
-    y: 19
-    a: 21
-    b: 26
+    x: 5
+    y: 6
+    a: 13
+    b: 19

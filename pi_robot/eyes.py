@@ -11,13 +11,13 @@ class Eyes:
 
     def __init__(
         self,
-        left_gpio: int | None = None,
-        right_gpio: int | None = None,
+        left: int | None = None,
+        right: int | None = None,
     ) -> None:
-        if left_gpio:
-            self.left_led = PWMLED(left_gpio)
-        if right_gpio:
-            self.right_led = PWMLED(right_gpio)
+        if left:
+            self.left_led = PWMLED(left)
+        if right:
+            self.right_led = PWMLED(right)
 
     def blink(self, repeat_n: int = 4, speed: Speed = Speed.FAST) -> None:
         logger.info("👀️" * repeat_n)

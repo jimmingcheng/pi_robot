@@ -33,12 +33,12 @@ class Eyebrows:
         for _ in range(repeat_n):
             for angle in [x * (45 / steps) for x in range(steps + 1)]:
                 self.left_servo.angle = angle
-                self.right_servo.angle = angle
+                self.right_servo.angle = 180 - angle
 
                 time.sleep(duration / steps / 2.0)
 
             for angle in [x * (45 / steps) for x in range(steps, -1, -1)]:
                 self.left_servo.angle = angle
-                self.right_servo.angle = angle
+                self.right_servo.angle = 180 - angle
 
                 time.sleep(duration / steps / 2.0)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -32,6 +34,8 @@ class Robot:
     eyes: Eyes
     eyebrows: Eyebrows
     servokit: ServoKit
+    controller: Controller
+    listen_lock = asyncio.Lock()
 
     def __init__(self, config_file_path: str = "config.yaml") -> None:
         self.servokit = ServoKit(channels=16)
@@ -61,13 +65,13 @@ class Robot:
             self.mouth = Mouth(gpio=connections.get("mouth"))
 
             self.ears = Ears(
-                left_gpio=connections.get("ears", {}).get("left"),
-                right_gpio=connections.get("ears", {}).get("right")
+                left=connections.get("ears", {}).get("left"),
+                right=connections.get("ears", {}).get("right")
             )
 
             self.eyes = Eyes(
-                left_gpio=connections.get("eyes", {}).get("left"),
-                right_gpio=connections.get("eyes", {}).get("right")
+                left=connections.get("eyes", {}).get("left"),
+                right=connections.get("eyes", {}).get("right")
             )
             self.eyebrows = Eyebrows(
                 servokit=self.servokit,
@@ -83,13 +87,11 @@ class Robot:
             )
 
             self.controller = Controller(
-                ears=self.ears,
-                eyes=self.eyes,
-                eyebrows=self.eyebrows,
-                button_x_gpio=connections.get("controller", {}).get("button_x"),
-                button_y_gpio=connections.get("controller", {}).get("button_y"),
-                button_a_gpio=connections.get("controller", {}).get("button_a"),
-                button_b_gpio=connections.get("controller", {}).get("button_b"),
+                robot=self,
+                button_x_gpio=connections.get("controller", {}).get("x"),
+                button_y_gpio=connections.get("controller", {}).get("y"),
+                button_a_gpio=connections.get("controller", {}).get("a"),
+                button_b_gpio=connections.get("controller", {}).get("b"),
             )
 
         except KeyError as e:
@@ -101,7 +103,8 @@ class Robot:
             """\
             Your name is {name}.
 
-            You are a cute little robot with eyes that can blink, eyebrows that can move, and ears that can wiggle.
+            You are a cute little robot with eyes that can blink, eyebrows that can move, and ears
+            that can wiggle by making API calls to trigger hardware.
 
             You can also hold a conversation, tell jokes, and answer questions.
 
@@ -198,30 +201,34 @@ class Robot:
                                         function_definition=func_args["function_definition"]
                                     )
                                 )
+                    break
         finally:
             output_stream.stop_stream()
             output_stream.close()
             audio.terminate()
 
     async def listen(self) -> None:
-        client = openai.AsyncOpenAI()
-        async with Ears() as activated_ears:
-            self.ears = activated_ears
+        async with self.listen_lock:
+            client = openai.AsyncOpenAI()
+            try:
+                self.ears.start_listening()
 
-            async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
-                while True:
-                    await self.ears.listen()
+                async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
+                    while True:
+                        await self.ears.listen()
 
-                    if self.ears.heard_end_of_speech():
-                        logger.info("\nRobot: <I heard you>")
-                        await self.reply(openai_conn, self.ears.get_speech_audio())
-                        self.ears.speech_detection_state.reset()
-                        return
+                        if self.ears.heard_end_of_speech():
+                            logger.info("\nRobot: <I heard you>")
+                            await self.reply(openai_conn, self.ears.get_speech_audio())
+                            self.ears.speech_detection_state.reset()
+                            return
+            finally:
+                self.ears.stop_listening()
 
     async def run(self) -> None:
-        logger.info("Starting robot...")
+        logger.info(f"Hello, my name is {self.name}.")
+        self.controller.set_event_loop(asyncio.get_running_loop())
         await asyncio.gather(
-            self.listen(),
             asyncio.Event().wait()
         )
 

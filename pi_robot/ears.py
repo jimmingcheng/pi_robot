@@ -41,8 +41,8 @@ class Ears:
 
     def __init__(
         self,
-        left_channel: int | None = None,
-        right_channel: int | None = None,
+        left: int | None = None,
+        right: int | None = None,
         servokit: ServoKit | None = None,
         silence_threshold: int = 500,
         silence_duration: float = 2.0,
@@ -51,8 +51,8 @@ class Ears:
         if not servokit:
             servokit = ServoKit(channels=16)
 
-        self.left_servo = servokit.servo[left_channel] if left_channel is not None else None
-        self.right_servo = servokit.servo[right_channel] if right_channel is not None else None
+        self.left_servo = servokit.servo[left] if left is not None else None
+        self.right_servo = servokit.servo[right] if right is not None else None
 
         self.silence_threshold = silence_threshold
         self.silence_duration = silence_duration
@@ -65,6 +65,11 @@ class Ears:
             speech_start_time=None,
             speech_detected=False,
         )
+
+        if self.left_servo:
+            self.left_servo.angle = 90
+        if self.right_servo:
+            self.right_servo.angle = 90
 
     @staticmethod
     def find_usb_microphone() -> int | None:
@@ -98,8 +103,10 @@ class Ears:
         rms = np.sqrt(np.mean(audio_float ** 2))
         return 0 if np.isnan(rms) else rms
 
-    async def __aenter__(self) -> "Ears":
-        """Initialize audio stream in an async context."""
+    def start_listening(self) -> None:
+        self.perk_up()
+
+        self.audio = pyaudio.PyAudio()
         self.stream = self.audio.open(
             format=pyaudio.paInt16,
             channels=1,
@@ -108,9 +115,10 @@ class Ears:
             input_device_index=self.input_device_index,
             frames_per_buffer=self.CHUNK_SIZE,
         )
-        return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+    def stop_listening(self) -> None:
+        self.perk_down()
+
         """Ensure proper cleanup of audio resources."""
         if self.stream:
             self.stream.stop_stream()
@@ -187,7 +195,7 @@ class Ears:
         return json.loads(result)["text"]
 
     def wiggle(self, repeat_n: int = 4, speed: Speed = Speed.FAST) -> None:
-        logger.info("👂" * repeat_n)
+        logger.info(f'👂: wiggle x{repeat_n}')
 
         if not self.left_servo or not self.right_servo:
             return
@@ -198,12 +206,29 @@ class Ears:
         for _ in range(repeat_n):
             for angle in [x * (45 / steps) for x in range(steps + 1)]:
                 self.left_servo.angle = angle
-                self.right_servo.angle = angle
+                self.right_servo.angle = 180 - angle
 
                 time.sleep(duration / steps / 2.0)
 
             for angle in [x * (45 / steps) for x in range(steps, -1, -1)]:
                 self.left_servo.angle = angle
-                self.right_servo.angle = angle
+                self.right_servo.angle = 180 - angle
 
                 time.sleep(duration / steps / 2.0)
+
+    def perk_up(self) -> None:
+        logger.info("👂: perking up")
+
+        if not self.left_servo or not self.right_servo:
+            return
+
+        self.left_servo.angle = 180
+        self.right_servo.angle = 0
+
+    def perk_down(self) -> None:
+        if not self.left_servo or not self.right_servo:
+            return
+
+        logger.info("👂: perking down")
+        self.left_servo.angle = 90
+        self.right_servo.angle = 90
