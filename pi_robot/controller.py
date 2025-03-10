@@ -53,11 +53,12 @@ class Controller:
         )
 
     async def generic_command_handler(self, button: Button) -> None:
+        loop = asyncio.get_event_loop()
         if button == self.button_x:
-            await self.robot.listen()
+            await loop.run_in_executor(None, self.robot.eyes.blink)
         elif button == self.button_y:
-            self.robot.eyes.blink()
+            await loop.run_in_executor(None, self.robot.eyebrows.wiggle)
         elif button == self.button_a:
-            self.robot.eyebrows.happy_raise()
+            await loop.run_in_executor(None, self.robot.ears.wiggle)
         elif button == self.button_b:
-            self.robot.eyebrows.angry_furrow()
+            await self.robot.listen()

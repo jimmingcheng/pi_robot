@@ -201,21 +201,27 @@ class Ears:
         if not self.left_servo or not self.right_servo:
             return
 
+        wiggle_angle = 20
         steps = 100
         duration = 0.2 if speed == Speed.FAST else 0.5
 
         for _ in range(repeat_n):
-            for angle in [x * (45 / steps) for x in range(steps + 1)]:
-                self.left_servo.angle = angle
-                self.right_servo.angle = 180 - angle
+            for angle in [x * (wiggle_angle / steps) for x in range(steps + 1)]:
+                self.left_servo.angle = 90 + angle
+                self.right_servo.angle = 90 - angle
 
                 time.sleep(duration / steps / 2.0)
 
-            for angle in [x * (45 / steps) for x in range(steps, -1, -1)]:
-                self.left_servo.angle = angle
-                self.right_servo.angle = 180 - angle
+            for angle in [x * (wiggle_angle / steps) for x in range(steps, -1, -1)]:
+                self.left_servo.angle = 90 + angle
+                self.right_servo.angle = 90 - angle
 
                 time.sleep(duration / steps / 2.0)
+        if not self.left_servo or not self.right_servo:
+            return
+
+        steps = 100
+        duration = 0.2 if speed == Speed.FAST else 0.5
 
     def perk_up(self) -> None:
         logger.info("👂: perking up")

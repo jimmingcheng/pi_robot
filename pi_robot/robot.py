@@ -69,21 +69,20 @@ class Robot:
                 right=connections.get("ears", {}).get("right")
             )
 
-            self.eyes = Eyes(
-                left=connections.get("eyes", {}).get("left"),
-                right=connections.get("eyes", {}).get("right")
-            )
             self.eyebrows = Eyebrows(
                 servokit=self.servokit,
                 left_channel=connections.get("eyebrows", {}).get("left"),
                 right_channel=connections.get("eyebrows", {}).get("right")
             )
 
-            self.brain = Brain(
-                mouth=self.mouth,
-                ears=self.ears,
-                eyes=self.eyes,
+            self.eyes = Eyes(
+                left=connections.get("eyes", {}).get("left"),
+                right=connections.get("eyes", {}).get("right"),
                 eyebrows=self.eyebrows,
+            )
+
+            self.brain = Brain(
+                robot=self,
             )
 
             self.controller = Controller(
@@ -247,7 +246,9 @@ if __name__ == "__main__":
     else:
         logger.setLevel(logging.INFO)
 
-    logger.info("Initializing robot...")
-    robot = Robot()
+    config_file_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
+
+    logger.info(f'Initializing robot with config file: {config_file_path}')
+    robot = Robot(config_file_path=config_file_path)
 
     asyncio.run(robot.run())

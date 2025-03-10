@@ -1,34 +1,27 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import textwrap
 from scooterbot_agent.python_api_agent import PythonAPIAgent
 from scooterbot_agent.python_api_agent import generate_python_api_doc
 
 from pi_robot.logging import logger
-from pi_robot.mouth import Mouth
 from pi_robot.movement import Speed
 from pi_robot.ears import Ears
 from pi_robot.eyebrows import Eyebrows
 from pi_robot.eyes import Eyes
 
 
+if TYPE_CHECKING:
+    from pi_robot.robot import Robot
+
+
 class Brain(PythonAPIAgent):
-    mouth: Mouth
-    ears: Ears
-    eyes: Eyes
-    eyebrows: Eyebrows | None
+    robot: Robot
 
-    def __init__(
-        self,
-        mouth: Mouth,
-        ears: Ears,
-        eyes: Eyes,
-        eyebrows: Eyebrows | None = None,
-    ) -> None:
+    def __init__(self, robot: Robot) -> None:
         super().__init__("null_user_id")
-
-        self.mouth = mouth
-        self.ears = ears
-        self.eyes = eyes
-        self.eyebrows = eyebrows
+        self.robot = robot
 
     def overview(self) -> str:
         return ""
@@ -91,10 +84,10 @@ class Brain(PythonAPIAgent):
         ).format(
             speed_api=generate_python_api_doc(Speed, whitelisted_members=["FAST", "SLOW"]),
             ears_api=generate_python_api_doc(Ears, whitelisted_members=["wiggle", "perk_up"]),
-            eyes_api=generate_python_api_doc(Eyes, whitelisted_members=["blink"]),
+            eyes_api=generate_python_api_doc(Eyes, whitelisted_members=["blink", "wink"]),
             eyebrows_api=generate_python_api_doc(
                 Eyebrows,
-                whitelisted_members=["wiggle", "angry_furrow", "happy_raise"]
+                whitelisted_members=["wiggle", "angry_furrow", "happy_raise", "sad_lower", "wink"],
             ),
         )
 
@@ -137,9 +130,9 @@ class Brain(PythonAPIAgent):
             'Speed': Speed,
         }
         invocation_func_locals = {
-            'ears': self.ears,
-            'eyes': self.eyes,
-            'eyebrows': self.eyebrows,
+            'ears': self.robot.ears,
+            'eyes': self.robot.eyes,
+            'eyebrows': self.robot.eyebrows,
             'Speed': Speed,
         }
 
