@@ -213,13 +213,19 @@ class Robot:
 
                 async with client.beta.realtime.connect(model="gpt-4o-mini-realtime-preview") as openai_conn:
                     while True:
-                        await self.ears.listen()
-
-                        if self.ears.heard_end_of_speech():
-                            logger.info("\nRobot: <I heard you>")
+                        try:
+                            await asyncio.wait_for(self.ears.listen(), timeout=5.0)
+                            if self.ears.heard_end_of_speech():
+                                logger.info("\nRobot: <I heard you>")
+                                await self.reply(openai_conn, self.ears.get_speech_audio())
+                                self.ears.speech_detection_state.reset()
+                                return
+                        except asyncio.TimeoutError:
+                            logger.info("\nRobot: <I heard you after timeout>")
                             await self.reply(openai_conn, self.ears.get_speech_audio())
                             self.ears.speech_detection_state.reset()
                             return
+
             finally:
                 self.ears.stop_listening()
 

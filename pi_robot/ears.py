@@ -44,9 +44,9 @@ class Ears:
         left: int | None = None,
         right: int | None = None,
         servokit: ServoKit | None = None,
-        silence_threshold: int = 500,
+        silence_threshold: int = 600,
         silence_duration: float = 2.0,
-        min_speech_duration: float = 0.5,
+        min_speech_duration: float = 1.0,
     ) -> None:
         if not servokit:
             servokit = ServoKit(channels=16)

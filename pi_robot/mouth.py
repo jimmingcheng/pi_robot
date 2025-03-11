@@ -35,12 +35,12 @@ class Mouth:
         normalized = max(0.0, min(1.0, normalized))
 
         # Define steps. Adjust the thresholds as needed.
-        if normalized < 0.3:
+        if normalized < 0.2:
             return 0.0
-        elif normalized < 0.5:
-            return 0.25
-        elif normalized < 0.7:
+        elif normalized < 0.3:
             return 0.5
+        elif normalized < 0.4:
+            return 0.75
         else:
             return 1.0
 

@@ -87,7 +87,7 @@ class Expressions:
         self.eyebrows.relax()
 
     def wink(self) -> None:
-        self.eyebrows.raise_left()
+        self.eyebrows.lower_left()
 
         self.eyes.wink()
 
