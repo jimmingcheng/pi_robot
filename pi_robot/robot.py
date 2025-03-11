@@ -78,7 +78,6 @@ class Robot:
             self.eyes = Eyes(
                 left=connections.get("eyes", {}).get("left"),
                 right=connections.get("eyes", {}).get("right"),
-                eyebrows=self.eyebrows,
             )
 
             self.brain = Brain(
@@ -250,5 +249,7 @@ if __name__ == "__main__":
 
     logger.info(f'Initializing robot with config file: {config_file_path}')
     robot = Robot(config_file_path=config_file_path)
+
+    robot.brain.expressions.show_amusement()
 
     asyncio.run(robot.run())

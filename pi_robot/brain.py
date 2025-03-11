@@ -8,6 +8,7 @@ from scooterbot_agent.python_api_agent import generate_python_api_doc
 from pi_robot.logging import logger
 from pi_robot.movement import Speed
 from pi_robot.ears import Ears
+from pi_robot.expressions import Expressions
 from pi_robot.eyebrows import Eyebrows
 from pi_robot.eyes import Eyes
 
@@ -22,6 +23,11 @@ class Brain(PythonAPIAgent):
     def __init__(self, robot: Robot) -> None:
         super().__init__("null_user_id")
         self.robot = robot
+        self.expressions = Expressions(
+            ears=self.robot.ears,
+            eyes=self.robot.eyes,
+            eyebrows=self.robot.eyebrows,
+        )
 
     def overview(self) -> str:
         return ""
@@ -41,6 +47,8 @@ class Brain(PythonAPIAgent):
             {eyes_api}
 
             {eyebrows_api}
+
+            {expression_api}
             ```
 
             # API Usage
@@ -53,7 +61,7 @@ class Brain(PythonAPIAgent):
 
             - function_name should describe the request to be fulfilled
             - the function should have arguments `ears`, `eyes`, and `eyebrows` which are instances
-              of the `Ears`, `Eyes`, and `Eyebrows` classes respectively
+              of the `Ears`, `Eyes`, `Eyebrows`, and `Expressions` classes respectively
 
             The resulting function definition should be returned as the `function_definition`
             argument to the `invoke_api` tool.
@@ -61,33 +69,34 @@ class Brain(PythonAPIAgent):
             ## Examples of `function_definition` arguments to the `invoke_api` tool calls
 
             ```
-            def laugh(ears, eyes, eyebrows):
-                eyes.blink(speed=Speed.FAST)
-                eyebrows.wiggle()
+            def laugh(ears, eyes, eyebrows, expressions):
+                expressions.show_happiness()
             ```
 
             ```
-            def show_empathy(ears, eyes, eyebrows):
-                eyes.blink(speed=Speed.SLOW)
-            ```
-
-            ```
-            def wiggle_ears(ears, eyes, eyebrows):
+            def wiggle_ears(ears, eyes, eyebrows, expressions):
                 ears.wiggle()
             ```
 
             ```
-            def blink_eyes(ears, eyes, eyebrows):
+            def blink_eyes(ears, eyes, eyebrows, expressions):
                 eyes.blink()
             ```
             """
         ).format(
             speed_api=generate_python_api_doc(Speed, whitelisted_members=["FAST", "SLOW"]),
             ears_api=generate_python_api_doc(Ears, whitelisted_members=["wiggle", "perk_up"]),
-            eyes_api=generate_python_api_doc(Eyes, whitelisted_members=["blink", "wink"]),
-            eyebrows_api=generate_python_api_doc(
-                Eyebrows,
-                whitelisted_members=["wiggle", "angry_furrow", "happy_raise", "sad_lower", "wink"],
+            eyes_api=generate_python_api_doc(Eyes, whitelisted_members=["blink"]),
+            eyebrows_api=generate_python_api_doc(Eyebrows, whitelisted_members=["wiggle"]),
+            expression_api=generate_python_api_doc(
+                Expressions,
+                whitelisted_members=[
+                    "show_happiness",
+                    "show_sadness",
+                    "show_anger",
+                    "show_fear",
+                    "wink",
+                ],
             ),
         )
 
@@ -115,7 +124,7 @@ class Brain(PythonAPIAgent):
             """\
             {function_definition}
 
-            retval = {func_name}(ears, eyes, eyebrows)
+            retval = {func_name}(ears, eyes, eyebrows, expressions)
             """
         ).format(
             function_definition=function_definition,
@@ -133,6 +142,7 @@ class Brain(PythonAPIAgent):
             'ears': self.robot.ears,
             'eyes': self.robot.eyes,
             'eyebrows': self.robot.eyebrows,
+            'expressions': self.expressions,
             'Speed': Speed,
         }
 
